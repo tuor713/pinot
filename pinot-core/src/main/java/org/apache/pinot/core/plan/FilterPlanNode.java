@@ -52,12 +52,14 @@ import org.apache.pinot.segment.spi.index.ThreadSafeMutableRoaringBitmap;
 import org.apache.pinot.segment.spi.index.reader.JsonIndexReader;
 import org.apache.pinot.segment.spi.index.reader.NullValueVectorReader;
 import org.apache.pinot.spi.exception.BadQueryRequestException;
+import org.roaringbitmap.buffer.MutableRoaringBitmap;
 
 
 public class FilterPlanNode implements PlanNode {
   private final IndexSegment _indexSegment;
   private final QueryContext _queryContext;
   private final int _numDocs;
+  private final MutableRoaringBitmap _validDocIds;
 
   // Cache the predicate evaluators
   private final Map<Predicate, PredicateEvaluator> _predicateEvaluatorMap = new HashMap<>();
@@ -65,6 +67,15 @@ public class FilterPlanNode implements PlanNode {
   public FilterPlanNode(IndexSegment indexSegment, QueryContext queryContext) {
     _indexSegment = indexSegment;
     _queryContext = queryContext;
+
+    // Snapshot validDocIds *before* _numDocs since otherwise newest upserts could get lost
+    ThreadSafeMutableRoaringBitmap tmpDocIds = _indexSegment.getValidDocIds();
+    if (tmpDocIds != null) {
+      _validDocIds = tmpDocIds.getMutableRoaringBitmap();
+    } else {
+      _validDocIds = null;
+    }
+
     // NOTE: Fetch number of documents in the segment when creating the plan node so that it is consistent among all
     //       filter operators. Number of documents will keep increasing for MutableSegment (CONSUMING segment).
     _numDocs = _indexSegment.getSegmentMetadata().getTotalDocs();
@@ -73,20 +84,19 @@ public class FilterPlanNode implements PlanNode {
   @Override
   public BaseFilterOperator run() {
     FilterContext filter = _queryContext.getFilter();
-    ThreadSafeMutableRoaringBitmap validDocIds = _indexSegment.getValidDocIds();
-    boolean applyValidDocIds = validDocIds != null && !QueryOptionsUtils.isSkipUpsert(_queryContext.getQueryOptions());
+    boolean applyValidDocIds = _validDocIds != null && !QueryOptionsUtils.isSkipUpsert(_queryContext.getQueryOptions());
     if (filter != null) {
       BaseFilterOperator filterOperator = constructPhysicalOperator(filter);
       if (applyValidDocIds) {
         BaseFilterOperator validDocFilter =
-            new BitmapBasedFilterOperator(validDocIds.getMutableRoaringBitmap(), false, _numDocs);
+                new BitmapBasedFilterOperator(_validDocIds, false, _numDocs);
         return FilterOperatorUtils.getAndFilterOperator(Arrays.asList(filterOperator, validDocFilter), _numDocs,
-            _queryContext.getDebugOptions());
+                _queryContext.getDebugOptions());
       } else {
         return filterOperator;
       }
     } else if (applyValidDocIds) {
-      return new BitmapBasedFilterOperator(validDocIds.getMutableRoaringBitmap(), false, _numDocs);
+      return new BitmapBasedFilterOperator(_validDocIds, false, _numDocs);
     } else {
       return new MatchAllFilterOperator(_numDocs);
     }
