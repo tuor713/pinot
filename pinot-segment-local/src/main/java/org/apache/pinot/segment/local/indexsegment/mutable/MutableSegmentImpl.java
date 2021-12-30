@@ -61,9 +61,7 @@ import org.apache.pinot.segment.local.utils.FixedIntArrayOffHeapIdMap;
 import org.apache.pinot.segment.local.utils.GeometrySerializer;
 import org.apache.pinot.segment.local.utils.IdMap;
 import org.apache.pinot.segment.local.utils.IngestionUtils;
-import org.apache.pinot.segment.spi.MutableSegment;
-import org.apache.pinot.segment.spi.SegmentMetadata;
-import org.apache.pinot.segment.spi.V1Constants;
+import org.apache.pinot.segment.spi.*;
 import org.apache.pinot.segment.spi.datasource.DataSource;
 import org.apache.pinot.segment.spi.index.ThreadSafeMutableRoaringBitmap;
 import org.apache.pinot.segment.spi.index.creator.H3IndexConfig;
@@ -1076,6 +1074,89 @@ public class MutableSegmentImpl implements MutableSegment {
       _numValues += numValuesInMVEntry;
       _maxNumValuesPerMVEntry = Math.max(_maxNumValuesPerMVEntry, numValuesInMVEntry);
     }
+  }
+
+  @Override
+  public IndexSegment snapshot() {
+    ThreadSafeMutableRoaringBitmap validDocIds = new ThreadSafeMutableRoaringBitmap(_validDocIds.getMutableRoaringBitmap());
+    MutableSegment parent = this;
+    return new MutableSegment() {
+      @Override
+      public boolean index(GenericRow row, @Nullable RowMetadata rowMetadata) throws IOException {
+        return parent.index(row, rowMetadata);
+      }
+
+      @Override
+      public int getNumDocsIndexed() {
+        return parent.getNumDocsIndexed();
+      }
+
+      @Override
+      public String getSegmentName() {
+        return parent.getSegmentName();
+      }
+
+      @Override
+      public SegmentMetadata getSegmentMetadata() {
+        return parent.getSegmentMetadata();
+      }
+
+      @Override
+      public Set<String> getColumnNames() {
+        return parent.getColumnNames();
+      }
+
+      @Override
+      public Set<String> getPhysicalColumnNames() {
+        return parent.getPhysicalColumnNames();
+      }
+
+      @Override
+      public DataSource getDataSource(String columnName) {
+        return parent.getDataSource(columnName);
+      }
+
+      @Override
+      public List<StarTreeV2> getStarTrees() {
+        return parent.getStarTrees();
+      }
+
+      @Nullable
+      @Override
+      public ThreadSafeMutableRoaringBitmap getValidDocIds() {
+        return validDocIds;
+      }
+
+      @Override
+      public GenericRow getRecord(int docId, GenericRow reuse) {
+        return parent.getRecord(docId, reuse);
+      }
+
+      @Override
+      public IndexSegment snapshot() {
+        return this;
+      }
+
+      @Override
+      public void destroy() {
+        parent.destroy();
+      }
+
+      @Override
+      public void prefetch(FetchContext fetchContext) {
+        parent.prefetch(fetchContext);
+      }
+
+      @Override
+      public void acquire(FetchContext fetchContext) {
+        parent.acquire(fetchContext);
+      }
+
+      @Override
+      public void release(FetchContext fetchContext) {
+        parent.release(fetchContext);
+      }
+    };
   }
 
   private class IndexContainer implements Closeable {

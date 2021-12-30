@@ -95,6 +95,11 @@ public interface IndexSegment {
   }
 
   /**
+   * Create a snapshot of the segment with fixed validDocIds
+   */
+  IndexSegment snapshot();
+
+  /**
    * Instructs the segment to fetch buffers for specified columns.
    * When enabled, this should be a blocking call made before operating on the segment.
    * @param fetchContext context for this segment's fetch

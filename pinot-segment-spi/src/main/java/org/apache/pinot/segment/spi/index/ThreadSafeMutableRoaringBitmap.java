@@ -26,6 +26,7 @@ import org.roaringbitmap.buffer.MutableRoaringBitmap;
  */
 public class ThreadSafeMutableRoaringBitmap {
   private final MutableRoaringBitmap _mutableRoaringBitmap;
+  public static final Object SYNC_LOCK = new Object();
 
   public ThreadSafeMutableRoaringBitmap() {
     _mutableRoaringBitmap = new MutableRoaringBitmap();
@@ -34,6 +35,10 @@ public class ThreadSafeMutableRoaringBitmap {
   public ThreadSafeMutableRoaringBitmap(int firstDocId) {
     _mutableRoaringBitmap = new MutableRoaringBitmap();
     _mutableRoaringBitmap.add(firstDocId);
+  }
+
+  public ThreadSafeMutableRoaringBitmap(MutableRoaringBitmap bitmap) {
+    _mutableRoaringBitmap = bitmap;
   }
 
   public synchronized void add(int docId) {

@@ -20,7 +20,6 @@ package org.apache.pinot.broker.routing.segmentselector;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,9 +31,10 @@ import org.apache.helix.model.IdealState;
 import org.apache.pinot.common.request.BrokerRequest;
 import org.apache.pinot.common.request.PinotQuery;
 import org.apache.pinot.common.utils.HLCSegmentName;
-import org.apache.pinot.common.utils.LLCSegmentName;
 import org.apache.pinot.common.utils.SegmentName;
 import org.apache.pinot.spi.utils.CommonConstants.Helix.StateModel.SegmentStateModel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -50,6 +50,7 @@ import org.apache.pinot.spi.utils.CommonConstants.Helix.StateModel.SegmentStateM
  * </ul>
  */
 public class RealtimeSegmentSelector implements SegmentSelector {
+  private static final Logger LOGGER = LoggerFactory.getLogger(RealtimeSegmentSelector.class);
   public static final String ROUTING_OPTIONS_KEY = "routingOptions";
   public static final String FORCE_HLC = "FORCE_HLC";
 
@@ -70,7 +71,7 @@ public class RealtimeSegmentSelector implements SegmentSelector {
 
     List<String> completedLLCSegments = new ArrayList<>();
     // Store the first CONSUMING segment for each partition
-    Map<Integer, LLCSegmentName> partitionIdToFirstConsumingLLCSegmentMap = new HashMap<>();
+    List<String> consumingLLCSegments = new ArrayList<>();
 
     // Iterate over the external view instead of the online segments so that the map lookups are performed on the
     // HashSet instead of the TreeSet for performance. For LLC segments, we need the external view to figure out whether
@@ -94,20 +95,7 @@ public class RealtimeSegmentSelector implements SegmentSelector {
         groupIdToHLCSegmentsMap.computeIfAbsent(hlcSegmentName.getGroupId(), k -> new HashSet<>()).add(segment);
       } else {
         if (instanceStateMap.containsValue(SegmentStateModel.CONSUMING)) {
-          // Keep the first CONSUMING segment for each partition
-          LLCSegmentName llcSegmentName = new LLCSegmentName(segment);
-          partitionIdToFirstConsumingLLCSegmentMap
-              .compute(llcSegmentName.getPartitionGroupId(), (k, consumingSegment) -> {
-                if (consumingSegment == null) {
-                  return llcSegmentName;
-                } else {
-                  if (llcSegmentName.getSequenceNumber() < consumingSegment.getSequenceNumber()) {
-                    return llcSegmentName;
-                  } else {
-                    return consumingSegment;
-                  }
-                }
-              });
+          consumingLLCSegments.add(segment);
         } else {
           completedLLCSegments.add(segment);
         }
@@ -125,13 +113,12 @@ public class RealtimeSegmentSelector implements SegmentSelector {
       _hlcSegments = null;
     }
 
-    if (!completedLLCSegments.isEmpty() || !partitionIdToFirstConsumingLLCSegmentMap.isEmpty()) {
+    if (!completedLLCSegments.isEmpty() || !consumingLLCSegments.isEmpty()) {
       Set<String> llcSegments =
-          new HashSet<>(completedLLCSegments.size() + partitionIdToFirstConsumingLLCSegmentMap.size());
+          new HashSet<>(completedLLCSegments.size() + consumingLLCSegments.size());
       llcSegments.addAll(completedLLCSegments);
-      for (LLCSegmentName llcSegmentName : partitionIdToFirstConsumingLLCSegmentMap.values()) {
-        llcSegments.add(llcSegmentName.getSegmentName());
-      }
+      llcSegments.addAll(consumingLLCSegments);
+
       _llcSegments = Collections.unmodifiableSet(llcSegments);
     } else {
       _llcSegments = null;

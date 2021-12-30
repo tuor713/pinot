@@ -28,9 +28,7 @@ import org.apache.pinot.segment.local.segment.index.datasource.ImmutableDataSour
 import org.apache.pinot.segment.local.segment.readers.PinotSegmentRecordReader;
 import org.apache.pinot.segment.local.startree.v2.store.StarTreeIndexContainer;
 import org.apache.pinot.segment.local.upsert.PartitionUpsertMetadataManager;
-import org.apache.pinot.segment.spi.ColumnMetadata;
-import org.apache.pinot.segment.spi.FetchContext;
-import org.apache.pinot.segment.spi.ImmutableSegment;
+import org.apache.pinot.segment.spi.*;
 import org.apache.pinot.segment.spi.datasource.DataSource;
 import org.apache.pinot.segment.spi.index.ThreadSafeMutableRoaringBitmap;
 import org.apache.pinot.segment.spi.index.column.ColumnIndexContainer;
@@ -189,6 +187,99 @@ public class ImmutableSegmentImpl implements ImmutableSegment {
   @Override
   public ThreadSafeMutableRoaringBitmap getValidDocIds() {
     return _validDocIds;
+  }
+
+  @Override
+  public IndexSegment snapshot() {
+    ThreadSafeMutableRoaringBitmap validDocIds = new ThreadSafeMutableRoaringBitmap(_validDocIds.getMutableRoaringBitmap());
+    ImmutableSegment parent = this;
+    return new ImmutableSegment() {
+      @Override
+      public String getSegmentName() {
+        return parent.getSegmentName();
+      }
+
+      @Override
+      public SegmentMetadata getSegmentMetadata() {
+        return parent.getSegmentMetadata();
+      }
+
+      @Override
+      public Set<String> getColumnNames() {
+        return parent.getColumnNames();
+      }
+
+      @Override
+      public Set<String> getPhysicalColumnNames() {
+        return parent.getPhysicalColumnNames();
+      }
+
+      @Override
+      public DataSource getDataSource(String columnName) {
+        return parent.getDataSource(columnName);
+      }
+
+      @Override
+      public List<StarTreeV2> getStarTrees() {
+        return parent.getStarTrees();
+      }
+
+      @Nullable
+      @Override
+      public ThreadSafeMutableRoaringBitmap getValidDocIds() {
+        return validDocIds;
+      }
+
+      @Override
+      public GenericRow getRecord(int docId, GenericRow reuse) {
+        return parent.getRecord(docId, reuse);
+      }
+
+      @Override
+      public IndexSegment snapshot() {
+        return this;
+      }
+
+      @Override
+      public void destroy() {
+        parent.destroy();
+      }
+
+      @Override
+      public void prefetch(FetchContext fetchContext) {
+        parent.prefetch(fetchContext);
+      }
+
+      @Override
+      public void acquire(FetchContext fetchContext) {
+        parent.acquire(fetchContext);
+      }
+
+      @Override
+      public void release(FetchContext fetchContext) {
+        parent.release(fetchContext);
+      }
+
+      @Override
+      public Dictionary getDictionary(String column) {
+        return parent.getDictionary(column);
+      }
+
+      @Override
+      public ForwardIndexReader getForwardIndex(String column) {
+        return parent.getForwardIndex(column);
+      }
+
+      @Override
+      public InvertedIndexReader getInvertedIndex(String column) {
+        return parent.getInvertedIndex(column);
+      }
+
+      @Override
+      public long getSegmentSizeBytes() {
+        return parent.getSegmentSizeBytes();
+      }
+    };
   }
 
   @Override

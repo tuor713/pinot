@@ -64,6 +64,7 @@ import org.apache.pinot.segment.spi.AggregationFunctionType;
 import org.apache.pinot.segment.spi.IndexSegment;
 import org.apache.pinot.segment.spi.MutableSegment;
 import org.apache.pinot.segment.spi.SegmentMetadata;
+import org.apache.pinot.segment.spi.index.ThreadSafeMutableRoaringBitmap;
 import org.apache.pinot.spi.env.PinotConfiguration;
 import org.apache.pinot.spi.exception.BadQueryRequestException;
 import org.apache.pinot.spi.utils.CommonConstants;
@@ -172,6 +173,15 @@ public class ServerQueryExecutorV1Impl implements QueryExecutor {
     for (SegmentDataManager segmentDataManager : segmentDataManagers) {
       indexSegments.add(segmentDataManager.getSegment());
     }
+
+    List<IndexSegment> snapshottedIndexSegments = new ArrayList<>(numSegmentsAcquired);
+    synchronized (ThreadSafeMutableRoaringBitmap.SYNC_LOCK) {
+      for (IndexSegment segment : indexSegments) {
+        snapshottedIndexSegments.add(segment.snapshot());
+      }
+    }
+
+    indexSegments = snapshottedIndexSegments;
 
     // Gather stats for realtime consuming segments
     int numConsumingSegments = 0;

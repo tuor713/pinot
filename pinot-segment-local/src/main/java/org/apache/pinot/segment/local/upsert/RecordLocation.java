@@ -30,11 +30,25 @@ public class RecordLocation {
   /** value used to denote the order */
   private final Comparable _comparisonValue;
 
+  /** in committing stage a record will exist both in the sealed consuming segment and the immutable segment being built
+   * we want to track both so that if a newer segment upserts it can invalidate both.
+   */
+  private final RecordLocation _concurrentLocation;
+
   public RecordLocation(IndexSegment indexSegment, int docId, Comparable comparisonValue) {
     _segment = indexSegment;
     _docId = docId;
     _comparisonValue = comparisonValue;
+    _concurrentLocation = null;
   }
+
+  public RecordLocation(IndexSegment indexSegment, int docId, Comparable comparisonValue, RecordLocation concurrentLocation) {
+    _segment = indexSegment;
+    _docId = docId;
+    _comparisonValue = comparisonValue;
+    _concurrentLocation = concurrentLocation;
+  }
+
 
   public IndexSegment getSegment() {
     return _segment;
@@ -46,5 +60,9 @@ public class RecordLocation {
 
   public Comparable getComparisonValue() {
     return _comparisonValue;
+  }
+
+  public RecordLocation getConcurrentLocation() {
+    return _concurrentLocation;
   }
 }

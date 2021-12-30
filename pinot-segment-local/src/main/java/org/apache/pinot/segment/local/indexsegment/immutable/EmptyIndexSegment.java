@@ -25,6 +25,7 @@ import javax.annotation.Nullable;
 import org.apache.pinot.segment.local.segment.index.datasource.EmptyDataSource;
 import org.apache.pinot.segment.spi.ColumnMetadata;
 import org.apache.pinot.segment.spi.ImmutableSegment;
+import org.apache.pinot.segment.spi.IndexSegment;
 import org.apache.pinot.segment.spi.datasource.DataSource;
 import org.apache.pinot.segment.spi.index.ThreadSafeMutableRoaringBitmap;
 import org.apache.pinot.segment.spi.index.metadata.SegmentMetadataImpl;
@@ -76,6 +77,11 @@ public class EmptyIndexSegment implements ImmutableSegment {
 
   @Override
   public void destroy() {
+  }
+
+  @Override
+  public IndexSegment snapshot() {
+    return this;
   }
 
   @Override

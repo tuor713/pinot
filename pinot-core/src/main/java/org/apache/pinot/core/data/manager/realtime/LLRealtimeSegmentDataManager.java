@@ -767,6 +767,7 @@ public class LLRealtimeSegmentDataManager extends RealtimeSegmentDataManager {
       }
       _leaseExtender.addSegment(_segmentNameStr, buildTimeLeaseMs, _currentOffset);
       _segmentBuildDescriptor = buildSegmentInternal(true);
+      _segmentLogger.info("Segment building for commit fully complete");
     } finally {
       _leaseExtender.removeSegment(_segmentNameStr);
     }
@@ -868,6 +869,8 @@ public class LLRealtimeSegmentDataManager extends RealtimeSegmentDataManager {
         FileUtils.deleteQuietly(tempSegmentFolder);
       }
 
+      _segmentLogger.info("Moved directory");
+
       long segmentSizeBytes = FileUtils.sizeOfDirectory(indexDir);
       _serverMetrics.setValueOfTableGauge(_metricKeyName, ServerGauge.LAST_REALTIME_SEGMENT_CREATION_DURATION_SECONDS,
           TimeUnit.MILLISECONDS.toSeconds(buildTimeMillis));
@@ -886,6 +889,8 @@ public class LLRealtimeSegmentDataManager extends RealtimeSegmentDataManager {
               .addSegmentError(_segmentNameStr, new SegmentErrorInfo(System.currentTimeMillis(), errorMessage, e));
           return null;
         }
+
+        _segmentLogger.info("Created segment tar file");
 
         File metadataFile = SegmentDirectoryPaths.findMetadataFile(indexDir);
         if (metadataFile == null) {

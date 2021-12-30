@@ -363,6 +363,7 @@ public class RealtimeTableDataManager extends BaseTableDataManager {
   }
 
   private void handleUpsert(ImmutableSegmentImpl immutableSegment) {
+    _logger.info("Starting upsert of immutable segment");
     String segmentName = immutableSegment.getSegmentName();
     int partitionGroupId = SegmentUtils
         .getRealtimeSegmentPartitionId(segmentName, _tableNameWithType, _helixManager, _primaryKeyColumns.get(0));
@@ -406,7 +407,9 @@ public class RealtimeTableDataManager extends BaseTableDataManager {
                 (Comparable) upsertComparisonValue);
           }
         };
+
     partitionUpsertMetadataManager.addSegment(immutableSegment, recordInfoIterator);
+    _logger.info("Finished upserting immutable segment into partitionUpsertMetadataManager");
   }
 
   @Override

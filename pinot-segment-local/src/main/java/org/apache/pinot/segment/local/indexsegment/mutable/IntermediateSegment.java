@@ -37,6 +37,7 @@ import org.apache.pinot.segment.local.realtime.impl.forward.FixedByteMVMutableFo
 import org.apache.pinot.segment.local.realtime.impl.forward.FixedByteSVMutableForwardIndex;
 import org.apache.pinot.segment.local.segment.index.column.IntermediateIndexContainer;
 import org.apache.pinot.segment.local.segment.index.column.NumValuesInfo;
+import org.apache.pinot.segment.spi.IndexSegment;
 import org.apache.pinot.segment.spi.MutableSegment;
 import org.apache.pinot.segment.spi.SegmentMetadata;
 import org.apache.pinot.segment.spi.V1Constants;
@@ -223,6 +224,9 @@ public class IntermediateSegment implements MutableSegment {
   public ThreadSafeMutableRoaringBitmap getValidDocIds() {
     return null;
   }
+
+  @Override
+  public IndexSegment snapshot() { return this; }
 
   @Override
   public GenericRow getRecord(int docId, GenericRow reuse) {
