@@ -110,9 +110,7 @@ public class PartitionUpsertMetadataManager {
               IndexSegment currentSegment = currentRecordLocation.getSegment();
               if (segment == currentSegment) {
                 if (recordInfo._comparisonValue.compareTo(currentRecordLocation.getComparisonValue()) >= 0) {
-                  synchronized (ThreadSafeMutableRoaringBitmap.SYNC_LOCK) {
-                    validDocIds.replace(currentRecordLocation.getDocId(), recordInfo._docId);
-                  }
+                  validDocIds.replace(currentRecordLocation.getDocId(), recordInfo._docId);
                   return new RecordLocation(segment, recordInfo._docId, recordInfo._comparisonValue);
                 } else {
                   return currentRecordLocation;
@@ -127,9 +125,7 @@ public class PartitionUpsertMetadataManager {
               String currentSegmentName = currentSegment.getSegmentName();
               if (segmentName.equals(currentSegmentName)) {
                 if (recordInfo._comparisonValue.compareTo(currentRecordLocation.getComparisonValue()) >= 0) {
-                  synchronized (ThreadSafeMutableRoaringBitmap.SYNC_LOCK) {
-                    validDocIds.add(recordInfo._docId);
-                  }
+                  validDocIds.add(recordInfo._docId);
                   // also save down the location in the old segment so it can be overridden
                   return new RecordLocation(segment, recordInfo._docId, recordInfo._comparisonValue, currentRecordLocation);
                 } else {
@@ -147,19 +143,14 @@ public class PartitionUpsertMetadataManager {
                       && LLCSegmentName.isLowLevelConsumerSegmentName(currentSegmentName)
                       && LLCSegmentName.getSequenceNumber(segmentName) > LLCSegmentName.getSequenceNumber(
                       currentSegmentName))) {
-                synchronized (ThreadSafeMutableRoaringBitmap.SYNC_LOCK) {
-                  Objects.requireNonNull(currentSegment.getValidDocIds()).remove(currentRecordLocation.getDocId());
-                  validDocIds.add(recordInfo._docId);
-                }
+                validDocIds.replace(Objects.requireNonNull(currentSegment.getValidDocIds()), currentRecordLocation.getDocId(), recordInfo._docId);
                 return new RecordLocation(segment, recordInfo._docId, recordInfo._comparisonValue);
               } else {
                 return currentRecordLocation;
               }
             } else {
               // New primary key
-              synchronized (ThreadSafeMutableRoaringBitmap.SYNC_LOCK) {
-                validDocIds.add(recordInfo._docId);
-              }
+              validDocIds.add(recordInfo._docId);
               return new RecordLocation(segment, recordInfo._docId, recordInfo._comparisonValue);
             }
           });
@@ -185,22 +176,20 @@ public class PartitionUpsertMetadataManager {
               IndexSegment currentSegment = currentRecordLocation.getSegment();
               int currentDocId = currentRecordLocation.getDocId();
               if (segment == currentSegment) {
-                synchronized (ThreadSafeMutableRoaringBitmap.SYNC_LOCK) {
-                  validDocIds.replace(currentDocId, recordInfo._docId);
-                }
+                validDocIds.replace(currentDocId, recordInfo._docId);
               } else {
-                synchronized (ThreadSafeMutableRoaringBitmap.SYNC_LOCK) {
-                  Objects.requireNonNull(currentSegment.getValidDocIds()).remove(currentDocId);
+                ThreadSafeMutableRoaringBitmap currentValidDocIds = Objects.requireNonNull(currentSegment.getValidDocIds());
+                ThreadSafeMutableRoaringBitmap concurrentValidDocIds = null;
+                int concurrentCurrentDocId = 0;
 
-                  // if the record was also present in a prior consuming segment that is in the process of being replaced
-                  if (currentRecordLocation.getConcurrentLocation() != null) {
-                    currentSegment = currentRecordLocation.getConcurrentLocation().getSegment();
-                    currentDocId = currentRecordLocation.getConcurrentLocation().getDocId();
-                    Objects.requireNonNull(currentSegment.getValidDocIds()).remove(currentDocId);
-                  }
-
-                  validDocIds.add(recordInfo._docId);
+                // if the record was also present in a prior consuming segment that is in the process of being replaced
+                if (currentRecordLocation.getConcurrentLocation() != null) {
+                  currentSegment = currentRecordLocation.getConcurrentLocation().getSegment();
+                  concurrentCurrentDocId = currentRecordLocation.getConcurrentLocation().getDocId();
+                  concurrentValidDocIds = Objects.requireNonNull(currentSegment.getValidDocIds());
                 }
+
+                validDocIds.replace(currentValidDocIds, currentDocId, concurrentValidDocIds, concurrentCurrentDocId, recordInfo._docId);
               }
               return new RecordLocation(segment, recordInfo._docId, recordInfo._comparisonValue);
             } else {
@@ -208,9 +197,7 @@ public class PartitionUpsertMetadataManager {
             }
           } else {
             // New primary key
-            synchronized (ThreadSafeMutableRoaringBitmap.SYNC_LOCK) {
-              validDocIds.add(recordInfo._docId);
-            }
+            validDocIds.add(recordInfo._docId);
             return new RecordLocation(segment, recordInfo._docId, recordInfo._comparisonValue);
           }
         });

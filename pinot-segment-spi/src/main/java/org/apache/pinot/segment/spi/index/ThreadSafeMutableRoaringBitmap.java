@@ -26,39 +26,83 @@ import org.roaringbitmap.buffer.MutableRoaringBitmap;
  */
 public class ThreadSafeMutableRoaringBitmap {
   private final MutableRoaringBitmap _mutableRoaringBitmap;
-  public static final Object SYNC_LOCK = new Object();
+
+  /**
+   * Object to lock on - can be this for use cases outside validDocIds. For validDocIds it's the PartitionUpsertMetadataManager
+   * object, which is the same for all bitmaps in the partition.
+   */
+  private final Object _lock;
 
   public ThreadSafeMutableRoaringBitmap() {
     _mutableRoaringBitmap = new MutableRoaringBitmap();
+    _lock = this;
+  }
+
+  public ThreadSafeMutableRoaringBitmap(Object lock) {
+    _mutableRoaringBitmap = new MutableRoaringBitmap();
+    _lock = lock;
   }
 
   public ThreadSafeMutableRoaringBitmap(int firstDocId) {
     _mutableRoaringBitmap = new MutableRoaringBitmap();
     _mutableRoaringBitmap.add(firstDocId);
+    _lock = this;
   }
 
   public ThreadSafeMutableRoaringBitmap(MutableRoaringBitmap bitmap) {
     _mutableRoaringBitmap = bitmap;
+    _lock = this;
   }
 
-  public synchronized void add(int docId) {
-    _mutableRoaringBitmap.add(docId);
+  public void add(int docId) {
+    synchronized (_lock) {
+      _mutableRoaringBitmap.add(docId);
+    }
   }
 
-  public synchronized boolean contains(int docId) {
-    return _mutableRoaringBitmap.contains(docId);
+  public boolean contains(int docId) {
+    synchronized (_lock) {
+      return _mutableRoaringBitmap.contains(docId);
+    }
   }
 
-  public synchronized void remove(int docId) {
-    _mutableRoaringBitmap.remove(docId);
+  public void remove(int docId) {
+    synchronized (_lock) {
+      _mutableRoaringBitmap.remove(docId);
+    }
   }
 
-  public synchronized void replace(int oldDocId, int newDocId) {
-    _mutableRoaringBitmap.remove(oldDocId);
-    _mutableRoaringBitmap.add(newDocId);
+  public void replace(int oldDocId, int newDocId) {
+    synchronized (_lock) {
+      _mutableRoaringBitmap.remove(oldDocId);
+      _mutableRoaringBitmap.add(newDocId);
+    }
   }
 
-  public synchronized MutableRoaringBitmap getMutableRoaringBitmap() {
-    return _mutableRoaringBitmap.clone();
+  public void replace(ThreadSafeMutableRoaringBitmap oldBitmap, int oldDocId, int newDocId) {
+    synchronized (_lock) {
+      oldBitmap.remove(oldDocId);
+      _mutableRoaringBitmap.add(newDocId);
+    }
+  }
+
+  public void replace(ThreadSafeMutableRoaringBitmap oldBitmap, int oldDocId, ThreadSafeMutableRoaringBitmap oldConcurrentBitmap, int oldConcurrentDocId, int newDocId) {
+    synchronized (_lock) {
+      oldBitmap.remove(oldDocId);
+      if (oldConcurrentBitmap != null) {
+        oldConcurrentBitmap.remove(oldConcurrentDocId);
+      }
+      _mutableRoaringBitmap.add(newDocId);
+    }
+  }
+
+  public MutableRoaringBitmap getMutableRoaringBitmap() {
+    synchronized (_lock) {
+      return _mutableRoaringBitmap.clone();
+    }
+  }
+
+  public Object getLock() {
+    return _lock;
   }
 }

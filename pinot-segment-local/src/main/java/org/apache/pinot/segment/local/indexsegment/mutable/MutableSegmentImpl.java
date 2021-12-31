@@ -371,7 +371,7 @@ public class MutableSegmentImpl implements MutableSegment {
     if (isUpsertEnabled()) {
       Preconditions.checkState(!_aggregateMetrics, "Metrics aggregation and upsert cannot be enabled together");
       _partitionUpsertMetadataManager = config.getPartitionUpsertMetadataManager();
-      _validDocIds = new ThreadSafeMutableRoaringBitmap();
+      _validDocIds = new ThreadSafeMutableRoaringBitmap(_partitionUpsertMetadataManager);
       String upsertComparisonColumn = config.getUpsertComparisonColumn();
       _upsertComparisonColumn = upsertComparisonColumn != null ? upsertComparisonColumn : _timeColumnName;
     } else {

@@ -22,6 +22,7 @@ import com.google.common.base.Preconditions;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -174,14 +175,33 @@ public class ServerQueryExecutorV1Impl implements QueryExecutor {
       indexSegments.add(segmentDataManager.getSegment());
     }
 
+    // Acquire consistent snapshots of all segments, holding the lock while taking snapshots.
     List<IndexSegment> snapshottedIndexSegments = new ArrayList<>(numSegmentsAcquired);
-    synchronized (ThreadSafeMutableRoaringBitmap.SYNC_LOCK) {
-      for (IndexSegment segment : indexSegments) {
-        snapshottedIndexSegments.add(segment.snapshot());
+
+    IdentityHashMap<Object, List<IndexSegment>> locksToSegment = new IdentityHashMap<>();
+    for (IndexSegment segment : indexSegments) {
+      ThreadSafeMutableRoaringBitmap validDocIds = segment.getValidDocIds();
+      if (validDocIds != null) {
+        Object lock = validDocIds.getLock();
+        List<IndexSegment> list = locksToSegment.getOrDefault(lock, new ArrayList<>());
+        list.add(segment);
+        locksToSegment.put(lock, list);
+      } else {
+        // no valid doc ids, i.e. no upsert possible
+        snapshottedIndexSegments.add(segment);
+      }
+    }
+
+    for (Map.Entry<Object, List<IndexSegment>> entry : locksToSegment.entrySet()) {
+      synchronized (entry.getKey()) {
+        for (IndexSegment segment : entry.getValue()) {
+          snapshottedIndexSegments.add(segment.snapshot());
+        }
       }
     }
 
     indexSegments = snapshottedIndexSegments;
+
 
     // Gather stats for realtime consuming segments
     int numConsumingSegments = 0;
