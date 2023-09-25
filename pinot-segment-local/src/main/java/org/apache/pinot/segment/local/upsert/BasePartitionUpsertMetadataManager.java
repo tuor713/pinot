@@ -423,10 +423,12 @@ public abstract class BasePartitionUpsertMetadataManager implements PartitionUps
             "Got unsupported segment implementation: {} for segment: {}, table: {}", segment.getClass(), segmentName,
             _tableNameWithType);
         if (validDocIds == null) {
-          validDocIds = new ThreadSafeMutableRoaringBitmap();
+          // Actually *share* roaring bitmap
+          validDocIds = oldSegment.getValidDocIds();
         }
         if (queryableDocIds == null && _deleteRecordColumn != null) {
-          queryableDocIds = new ThreadSafeMutableRoaringBitmap();
+          // Actually *share* roaring bitmap
+          queryableDocIds = oldSegment.getQueryableDocIds();
         }
         addOrReplaceSegment((ImmutableSegmentImpl) segment, validDocIds, queryableDocIds, recordInfoIterator,
             oldSegment, validDocIdsForOldSegment);
