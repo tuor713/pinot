@@ -58,9 +58,12 @@ import org.apache.pinot.segment.spi.index.reader.NullValueVectorReader;
 import org.apache.pinot.segment.spi.index.reader.TextIndexReader;
 import org.apache.pinot.spi.exception.BadQueryRequestException;
 import org.roaringbitmap.buffer.MutableRoaringBitmap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class FilterPlanNode implements PlanNode {
+  private static final Logger LOGGER = LoggerFactory.getLogger(FilterPlanNode.class);
 
   private final IndexSegment _indexSegment;
   private final QueryContext _queryContext;
@@ -84,6 +87,7 @@ public class FilterPlanNode implements PlanNode {
     // NOTE: Snapshot the queryableDocIds before reading the numDocs to prevent the latest updates getting lost
     MutableRoaringBitmap queryableDocIdSnapshot = null;
     if (!_queryContext.isSkipUpsert()) {
+      LOGGER.info("Snapshot segment {}", _indexSegment.getSegmentName());
       ThreadSafeMutableRoaringBitmap queryableDocIds = _indexSegment.getQueryableDocIds();
       if (queryableDocIds != null) {
         queryableDocIdSnapshot = queryableDocIds.getMutableRoaringBitmap();

@@ -18,13 +18,19 @@
  */
 package org.apache.pinot.core.query.executor;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
+import java.io.File;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.ThreadSafe;
@@ -65,18 +71,31 @@ import org.apache.pinot.core.query.utils.idset.IdSet;
 import org.apache.pinot.core.util.trace.TraceContext;
 import org.apache.pinot.segment.local.data.manager.SegmentDataManager;
 import org.apache.pinot.segment.local.data.manager.TableDataManager;
+import org.apache.pinot.segment.local.upsert.ConcurrentMapPartitionUpsertMetadataManager;
 import org.apache.pinot.segment.spi.AggregationFunctionType;
+import org.apache.pinot.segment.spi.ColumnMetadata;
+import org.apache.pinot.segment.spi.FetchContext;
 import org.apache.pinot.segment.spi.ImmutableSegment;
 import org.apache.pinot.segment.spi.IndexSegment;
 import org.apache.pinot.segment.spi.MutableSegment;
 import org.apache.pinot.segment.spi.SegmentMetadata;
+import org.apache.pinot.segment.spi.creator.SegmentVersion;
+import org.apache.pinot.segment.spi.datasource.DataSource;
+import org.apache.pinot.segment.spi.index.mutable.ThreadSafeMutableRoaringBitmap;
+import org.apache.pinot.segment.spi.index.startree.StarTreeV2;
+import org.apache.pinot.segment.spi.index.startree.StarTreeV2Metadata;
 import org.apache.pinot.spi.data.FieldSpec;
+import org.apache.pinot.spi.data.Schema;
+import org.apache.pinot.spi.data.readers.GenericRow;
 import org.apache.pinot.spi.env.PinotConfiguration;
 import org.apache.pinot.spi.exception.BadQueryRequestException;
 import org.apache.pinot.spi.exception.QueryCancelledException;
 import org.apache.pinot.spi.plugin.PluginManager;
 import org.apache.pinot.spi.trace.Tracing;
 import org.apache.pinot.spi.utils.builder.TableNameBuilder;
+import org.joda.time.Duration;
+import org.joda.time.Interval;
+import org.roaringbitmap.buffer.MutableRoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -336,6 +355,233 @@ public class ServerQueryExecutorV1Impl implements QueryExecutor {
     return instanceResponse;
   }
 
+  private class SnapshotSegment implements IndexSegment {
+    private final IndexSegment _delegate;
+    private final int _count;
+    private final MutableRoaringBitmap _queryableDocIds;
+
+    public SnapshotSegment(IndexSegment delegate) {
+      _delegate = delegate;
+
+      LOGGER.info("Snapshot segment {}", delegate.getSegmentName());
+
+      ThreadSafeMutableRoaringBitmap queryableDocIds = delegate.getQueryableDocIds();
+      if (queryableDocIds != null) {
+        _queryableDocIds = queryableDocIds.getMutableRoaringBitmap();
+      } else {
+        ThreadSafeMutableRoaringBitmap validDocIds = delegate.getValidDocIds();
+        if (validDocIds != null) {
+          _queryableDocIds = validDocIds.getMutableRoaringBitmap();
+        } else {
+          _queryableDocIds = null;
+        }
+      }
+
+      _count = delegate.getSegmentMetadata().getTotalDocs();
+    }
+
+
+    @Override
+    public String getSegmentName() {
+      return _delegate.getSegmentName();
+    }
+
+    @Override
+    public SegmentMetadata getSegmentMetadata() {
+      return new SegmentMetadata() {
+        @Override
+        public String getTableName() {
+          return _delegate.getSegmentMetadata().getTableName();
+        }
+
+        @Override
+        public String getName() {
+          return _delegate.getSegmentMetadata().getName();
+        }
+
+        @Override
+        public String getTimeColumn() {
+          return _delegate.getSegmentMetadata().getTimeColumn();
+        }
+
+        @Override
+        public long getStartTime() {
+          return _delegate.getSegmentMetadata().getStartTime();
+        }
+
+        @Override
+        public long getEndTime() {
+          return _delegate.getSegmentMetadata().getEndTime();
+        }
+
+        @Override
+        public TimeUnit getTimeUnit() {
+          return _delegate.getSegmentMetadata().getTimeUnit();
+        }
+
+        @Override
+        public Duration getTimeGranularity() {
+          return _delegate.getSegmentMetadata().getTimeGranularity();
+        }
+
+        @Override
+        public Interval getTimeInterval() {
+          return _delegate.getSegmentMetadata().getTimeInterval();
+        }
+
+        @Override
+        public String getCrc() {
+          return _delegate.getSegmentMetadata().getCrc();
+        }
+
+        @Override
+        public SegmentVersion getVersion() {
+          return _delegate.getSegmentMetadata().getVersion();
+        }
+
+        @Override
+        public Schema getSchema() {
+          return _delegate.getSegmentMetadata().getSchema();
+        }
+
+        @Override
+        public int getTotalDocs() {
+          return _count;
+        }
+
+        @Override
+        public File getIndexDir() {
+          return _delegate.getSegmentMetadata().getIndexDir();
+        }
+
+        @Nullable
+        @Override
+        public String getCreatorName() {
+          return _delegate.getSegmentMetadata().getCreatorName();
+        }
+
+        @Override
+        public long getIndexCreationTime() {
+          return _delegate.getSegmentMetadata().getIndexCreationTime();
+        }
+
+        @Override
+        public long getLastIndexedTimestamp() {
+          return _delegate.getSegmentMetadata().getLastIndexedTimestamp();
+        }
+
+        @Override
+        public long getLatestIngestionTimestamp() {
+          return _delegate.getSegmentMetadata().getLatestIngestionTimestamp();
+        }
+
+        @Override
+        public List<StarTreeV2Metadata> getStarTreeV2MetadataList() {
+          return _delegate.getSegmentMetadata().getStarTreeV2MetadataList();
+        }
+
+        @Override
+        public Map<String, String> getCustomMap() {
+          return _delegate.getSegmentMetadata().getCustomMap();
+        }
+
+        @Override
+        public String getStartOffset() {
+          return _delegate.getSegmentMetadata().getStartOffset();
+        }
+
+        @Override
+        public String getEndOffset() {
+          return _delegate.getSegmentMetadata().getEndOffset();
+        }
+
+        @Override
+        public TreeMap<String, ColumnMetadata> getColumnMetadataMap() {
+          return _delegate.getSegmentMetadata().getColumnMetadataMap();
+        }
+
+        @Override
+        public void removeColumn(String column) {
+          _delegate.getSegmentMetadata().removeColumn(column);
+        }
+
+        @Override
+        public JsonNode toJson(@Nullable Set<String> columnFilter) {
+          return _delegate.getSegmentMetadata().toJson(columnFilter);
+        }
+      };
+    }
+
+    @Override
+    public Set<String> getColumnNames() {
+      return _delegate.getColumnNames();
+    }
+
+    @Override
+    public Set<String> getPhysicalColumnNames() {
+      return _delegate.getPhysicalColumnNames();
+    }
+
+    @Override
+    public DataSource getDataSource(String columnName) {
+      return _delegate.getDataSource(columnName);
+    }
+
+    @Override
+    public List<StarTreeV2> getStarTrees() {
+      return _delegate.getStarTrees();
+    }
+
+    @Nullable
+    @Override
+    public ThreadSafeMutableRoaringBitmap getValidDocIds() {
+      if (_queryableDocIds != null) {
+        return new ThreadSafeMutableRoaringBitmap(_queryableDocIds);
+      }
+      return null;
+    }
+
+    @Nullable
+    @Override
+    public ThreadSafeMutableRoaringBitmap getQueryableDocIds() {
+      if (_queryableDocIds != null) {
+        return new ThreadSafeMutableRoaringBitmap(_queryableDocIds);
+      }
+      return null;
+    }
+
+    @Override
+    public GenericRow getRecord(int docId, GenericRow reuse) {
+      return _delegate.getRecord(docId, reuse);
+    }
+
+    @Override
+    public Object getValue(int docId, String column) {
+      return _delegate.getValue(docId, column);
+    }
+
+    @Override
+    public void prefetch(FetchContext fetchContext) {
+      _delegate.prefetch(fetchContext);
+    }
+
+    @Override
+    public void acquire(FetchContext fetchContext) {
+      _delegate.acquire(fetchContext);
+    }
+
+    @Override
+    public void release(FetchContext fetchContext) {
+      _delegate.release(fetchContext);
+    }
+
+    @Override
+    public void destroy() {
+      _delegate.destroy();
+    }
+  }
+
+
   // NOTE: This method might change indexSegments. Do not use it after calling this method.
   private InstanceResponseBlock executeInternal(List<IndexSegment> indexSegments, QueryContext queryContext,
       TimerContext timerContext, ExecutorService executorService, @Nullable ResultsBlockStreamer streamer,
@@ -356,6 +602,17 @@ public class ServerQueryExecutorV1Impl implements QueryExecutor {
         _segmentPrunerService.prune(indexSegments, queryContext, prunerStats, executorService);
     segmentPruneTimer.stopAndRecord();
     int numSelectedSegments = selectedSegments.size();
+
+    selectedSegments.sort(Comparator.<IndexSegment, String>comparing(s -> s.getSegmentName()).reversed());
+    LOGGER.info("Sorted segments: new order {}", selectedSegments.stream().map(s -> s.getSegmentName()).collect(
+        Collectors.joining(", ")));
+
+    if (!queryContext.isSkipUpsert()) {
+      synchronized (ConcurrentMapPartitionUpsertMetadataManager.LOCK) {
+        selectedSegments = selectedSegments.stream().map(SnapshotSegment::new).collect(Collectors.toList());
+      }
+    }
+
     LOGGER.debug("Matched {} segments after pruning", numSelectedSegments);
     InstanceResponseBlock instanceResponse;
     if (numSelectedSegments == 0) {

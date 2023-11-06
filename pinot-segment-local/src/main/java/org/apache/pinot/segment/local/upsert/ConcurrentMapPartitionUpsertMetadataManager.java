@@ -50,6 +50,8 @@ import org.roaringbitmap.buffer.MutableRoaringBitmap;
 @ThreadSafe
 public class ConcurrentMapPartitionUpsertMetadataManager extends BasePartitionUpsertMetadataManager {
 
+  public static final Object LOCK = new Object();
+
   @VisibleForTesting
   final ConcurrentHashMap<Object, RecordLocation> _primaryKeyToRecordLocationMap = new ConcurrentHashMap<>();
 
@@ -137,8 +139,10 @@ public class ConcurrentMapPartitionUpsertMetadataManager extends BasePartitionUp
                   segmentName) && LLCSegmentName.isLowLevelConsumerSegmentName(currentSegmentName)
                   && LLCSegmentName.getSequenceNumber(segmentName) > LLCSegmentName.getSequenceNumber(
                   currentSegmentName))) {
-                removeDocId(currentSegment, currentDocId);
-                addDocId(validDocIds, queryableDocIds, newDocId, recordInfo);
+                synchronized (LOCK) {
+                  removeDocId(currentSegment, currentDocId);
+                  addDocId(validDocIds, queryableDocIds, newDocId, recordInfo);
+                }
                 return new RecordLocation(segment, newDocId, newComparisonValue);
               } else {
                 return currentRecordLocation;
@@ -261,8 +265,10 @@ public class ConcurrentMapPartitionUpsertMetadataManager extends BasePartitionUp
               if (segment == currentSegment) {
                 replaceDocId(validDocIds, queryableDocIds, currentDocId, newDocId, recordInfo);
               } else {
-                removeDocId(currentSegment, currentDocId);
-                addDocId(validDocIds, queryableDocIds, newDocId, recordInfo);
+                synchronized (LOCK) {
+                  removeDocId(currentSegment, currentDocId);
+                  addDocId(validDocIds, queryableDocIds, newDocId, recordInfo);
+                }
               }
               return new RecordLocation(segment, newDocId, newComparisonValue);
             } else {
