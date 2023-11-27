@@ -31,6 +31,7 @@ import org.apache.pinot.common.metrics.ServerGauge;
 import org.apache.pinot.common.metrics.ServerMeter;
 import org.apache.pinot.common.metrics.ServerMetrics;
 import org.apache.pinot.common.utils.LLCSegmentName;
+import org.apache.pinot.common.utils.SegmentName;
 import org.apache.pinot.segment.local.indexsegment.immutable.ImmutableSegmentImpl;
 import org.apache.pinot.segment.local.utils.HashUtils;
 import org.apache.pinot.segment.spi.IndexSegment;
@@ -50,7 +51,18 @@ import org.roaringbitmap.buffer.MutableRoaringBitmap;
 @ThreadSafe
 public class ConcurrentMapPartitionUpsertMetadataManager extends BasePartitionUpsertMetadataManager {
 
-  public static final Object LOCK = new Object();
+  public static final ConcurrentHashMap<String, Object> SEGMENT_FAMILY_LOCKS = new ConcurrentHashMap<>();
+
+  public static Object getSegmentFamilyLock(String segmentName) {
+    if (!SegmentName.isLowLevelConsumerSegmentName(segmentName)) {
+      return new Object();
+    }
+
+    LLCSegmentName name = new LLCSegmentName(segmentName);
+    String prefix = name.getTableName() + "__" + name.getPartitionGroupId();
+    return SEGMENT_FAMILY_LOCKS.computeIfAbsent(prefix, s -> new Object());
+  }
+
 
   @VisibleForTesting
   final ConcurrentHashMap<Object, RecordLocation> _primaryKeyToRecordLocationMap = new ConcurrentHashMap<>();
@@ -139,7 +151,9 @@ public class ConcurrentMapPartitionUpsertMetadataManager extends BasePartitionUp
                   segmentName) && LLCSegmentName.isLowLevelConsumerSegmentName(currentSegmentName)
                   && LLCSegmentName.getSequenceNumber(segmentName) > LLCSegmentName.getSequenceNumber(
                   currentSegmentName))) {
-                synchronized (LOCK) {
+
+                Object lock = getSegmentFamilyLock(segmentName);
+                synchronized (lock) {
                   removeDocId(currentSegment, currentDocId);
                   addDocId(validDocIds, queryableDocIds, newDocId, recordInfo);
                 }
@@ -265,7 +279,8 @@ public class ConcurrentMapPartitionUpsertMetadataManager extends BasePartitionUp
               if (segment == currentSegment) {
                 replaceDocId(validDocIds, queryableDocIds, currentDocId, newDocId, recordInfo);
               } else {
-                synchronized (LOCK) {
+                Object lock = getSegmentFamilyLock(segment.getSegmentName());
+                synchronized (lock) {
                   removeDocId(currentSegment, currentDocId);
                   addDocId(validDocIds, queryableDocIds, newDocId, recordInfo);
                 }

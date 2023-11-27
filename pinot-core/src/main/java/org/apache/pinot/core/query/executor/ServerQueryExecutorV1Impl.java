@@ -22,7 +22,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -603,13 +602,16 @@ public class ServerQueryExecutorV1Impl implements QueryExecutor {
     segmentPruneTimer.stopAndRecord();
     int numSelectedSegments = selectedSegments.size();
 
-    selectedSegments.sort(Comparator.<IndexSegment, String>comparing(s -> s.getSegmentName()).reversed());
-    LOGGER.info("Sorted segments: new order {}", selectedSegments.stream().map(s -> s.getSegmentName()).collect(
-        Collectors.joining(", ")));
 
     if (!queryContext.isSkipUpsert()) {
-      synchronized (ConcurrentMapPartitionUpsertMetadataManager.LOCK) {
-        selectedSegments = selectedSegments.stream().map(SnapshotSegment::new).collect(Collectors.toList());
+      Map<Object, List<IndexSegment>> withLocks = selectedSegments.stream()
+          .collect(Collectors.groupingBy(
+              s -> ConcurrentMapPartitionUpsertMetadataManager.getSegmentFamilyLock(s.getSegmentName())));
+      selectedSegments = new ArrayList<>();
+      for (Map.Entry<Object, List<IndexSegment>> e : withLocks.entrySet()) {
+        synchronized (e.getKey()) {
+          selectedSegments.addAll(e.getValue().stream().map(SnapshotSegment::new).collect(Collectors.toList()));
+        }
       }
     }
 
